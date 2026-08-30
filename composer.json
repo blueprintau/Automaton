@@ -1,0 +1,27 @@
+{
+    "name": "blueprintau/automaton",
+    "description": "Automaton is a flexible, nested execution engine for PHP that transforms, filters, and orchestrates data payloads using declarative JSON schemas.",
+    "type": "library",
+    "require": {
+      "ext-mbstring": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^13.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Blueprintau\\Automaton\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Blueprintau\\Automaton\\Tests\\": "tests/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Jack Harris",
+            "email": "st_tuff@icloud.com"
+        }
+    ]
+}
