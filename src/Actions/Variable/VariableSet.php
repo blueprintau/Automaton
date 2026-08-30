@@ -34,15 +34,20 @@ class VariableSet extends Action
             $path = $options['key'] ?? $options['target'];
             $valueToSet = $this->resolvePath($input, $path);
         }
-        // 3. Otherwise, set the current $input directly
+        // 3. Otherwise, use the current $input directly
         else {
             $valueToSet = $input;
         }
 
         $context->set($varName, $valueToSet);
 
-        // Return untouched input so downstream pipelining remains intact
-        return $input;
+        // Forward the extracted/set value down the pipeline by default.
+        // If passthrough is explicitly set to true, return raw $input instead.
+        if (!empty($options['passthrough'])) {
+            return $input;
+        }
+
+        return $valueToSet;
     }
 
     /**
