@@ -2,13 +2,16 @@
 
 namespace Blueprintau\Automaton;
 
-use Blueprintau\Automaton\WorkflowExecutionException;
+use Closure;
 use Throwable;
 
 class ActionRunner
 {
     /** @var array<string, Action> */
     protected array $actions = [];
+
+    /** @var array<string, array<Closure>> */
+    protected array $listeners = [];
 
     public function register(Action $action): self
     {
@@ -18,6 +21,30 @@ class ActionRunner
 
         $this->actions[$action->getId()] = $action;
         return $this;
+    }
+
+    /**
+     * Register a callback listener for lifecycle events:
+     * 'step.start', 'step.finish', 'step.error', 'stream.chunk'
+     */
+    public function on(string $event, Closure $callback): self
+    {
+        $this->listeners[$event][] = $callback;
+        return $this;
+    }
+
+    /**
+     * Dispatch an event to all registered listeners.
+     */
+    public function emit(string $event, array $payload): void
+    {
+        if (empty($this->listeners[$event])) {
+            return;
+        }
+
+        foreach ($this->listeners[$event] as $listener) {
+            $listener($payload);
+        }
     }
 
     /**
@@ -52,36 +79,77 @@ class ActionRunner
             $options['_path']  = $currentPath;
 
             if (!$actionId || !isset($this->actions[$actionId])) {
-                throw new WorkflowExecutionException(
+                $exception = new WorkflowExecutionException(
                     "Automation Action '{$actionId}' is not registered in ActionRunner.",
                     (string) $actionId,
                     $currentPath
                 );
+
+                $this->emit('step.error', [
+                    'path'   => $currentPath,
+                    'action' => $actionId,
+                    'error'  => $exception->getMessage(),
+                ]);
+
+                throw $exception;
             }
+
+            // Emit Step Start
+            $this->emit('step.start', [
+                'path'      => $currentPath,
+                'action'    => $actionId,
+                'options'   => $options,
+                'input'     => $payload,
+                'timestamp' => microtime(true),
+            ]);
+
+            $startTime = microtime(true);
 
             try {
                 $payload = $this->actions[$actionId]->run($payload, $context, $options);
+
+                // Emit Step Finish
+                $this->emit('step.finish', [
+                    'path'          => $currentPath,
+                    'action'        => $actionId,
+                    'output'        => $payload,
+                    'duration_ms'   => round((microtime(true) - $startTime) * 1000, 2),
+                    'context_state' => method_exists($context, 'all') ? $context->all() : [],
+                ]);
             } catch (WorkflowExecutionException $e) {
-                // If the action threw a WorkflowExecutionException without path details, enrich it
-                if (empty($e->getPipelinePath())) {
-                    throw new WorkflowExecutionException(
+                $enrichedException = empty($e->getPipelinePath())
+                    ? new WorkflowExecutionException(
                         $e->getRawMessage(),
                         $actionId,
                         $currentPath,
                         $payload,
                         $e
-                    );
-                }
-                throw $e;
+                    )
+                    : $e;
+
+                $this->emit('step.error', [
+                    'path'   => $currentPath,
+                    'action' => $actionId,
+                    'error'  => $enrichedException->getMessage(),
+                ]);
+
+                throw $enrichedException;
             } catch (Throwable $e) {
-                // Catch standard PHP warnings, errors, and exceptions
-                throw new WorkflowExecutionException(
+                $wrappedException = new WorkflowExecutionException(
                     $e->getMessage(),
                     $actionId,
                     $currentPath,
                     $payload,
                     $e
                 );
+
+                $this->emit('step.error', [
+                    'path'   => $currentPath,
+                    'action' => $actionId,
+                    'error'  => $wrappedException->getMessage(),
+                ]);
+
+                throw $wrappedException;
             }
         }
 
