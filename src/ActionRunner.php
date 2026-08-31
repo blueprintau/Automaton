@@ -34,19 +34,25 @@ class ActionRunner
     }
 
     /**
-     * Dispatch an event to all registered listeners.
+     * Dispatch an event to specific listeners and wildcard ('*') listeners.
      */
     public function emit(string $event, array $payload): void
     {
-        if (empty($this->listeners[$event])) {
+        // If no listeners exist at all for this event or wildcard, exit early
+        if (empty($this->listeners[$event]) && empty($this->listeners['*'])) {
             return;
         }
 
-        foreach ($this->listeners[$event] as $listener) {
-            $listener($payload);
+        // 1. Specific event listeners
+        foreach ($this->listeners[$event] ?? [] as $listener) {
+            $listener($payload, $event);
+        }
+
+        // 2. Wildcard listeners
+        foreach ($this->listeners['*'] ?? [] as $listener) {
+            $listener($payload, $event);
         }
     }
-
     /**
      * Runs a pipeline of actions against $input.
      *
